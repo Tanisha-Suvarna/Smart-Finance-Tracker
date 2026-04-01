@@ -6,55 +6,69 @@ import random
 import os
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 1. CONNECTION (Local-Friendly Version) ---
+# --- 1. CONNECTION (Hybrid Fix) ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# This logic checks for the local file first so you don't get errors!
 if os.path.exists("creds.json"):
-    # LOCAL: Use the file in your folder
     creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
 elif "gcp_service_account" in st.secrets:
-    # WEB: Use this only when we are actually on the internet
     creds_info = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
 else:
-    st.error("Credential file 'creds.json' not found in this folder!")
+    st.error("Credential file 'creds.json' not found!")
+    st.stop()
 
 client = gspread.authorize(creds)
 
+# --- 2. OPEN THE SHEETS ---
 try:
     spreadsheet = client.open("Finances")
-    expense_sheet = spreadsheet.sheet1          # Tab 1: Expenses
-    goal_sheet = spreadsheet.worksheet("Goals") # Tab 2: Goals
+    expense_sheet = spreadsheet.sheet1          
+    goal_sheet = spreadsheet.worksheet("Goals") 
 except Exception as e:
-    st.error(f"Sheet Setup Error: Ensure a tab named 'Goals' exists. {e}")
+    st.error(f"Sheet Setup Error: {e}")
+    st.stop()
 
-# --- 2. DATA FETCH ---
-@st.cache_data(ttl=2)
+# --- 3. DATA FETCH ---
+@st.cache_data(ttl=1)
 def get_expense_data():
     data = expense_sheet.get_all_records()
     df = pd.DataFrame(data)
     if not df.empty: df.columns = [c.lower().strip() for c in df.columns]
     return df
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=1)
 def get_goal_data():
     data = goal_sheet.get_all_records()
     df = pd.DataFrame(data)
     if not df.empty: df.columns = [c.lower().strip() for c in df.columns]
     return df
 
-# --- 3. UI CONFIG ---
+# --- 4. UI CONFIG & GLASSMORPHISM ---
 if 'bg' not in st.session_state:
     st.session_state.bg = random.choice(["linear-gradient(135deg, #667eea 0%, #764ba2 100%)", "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)"])
 
 st.set_page_config(page_title="MMT Pro", layout="wide")
-st.markdown(f"<style>.stApp {{ background: {st.session_state.bg}; color: white; }} .metric-card {{ background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); text-align: center; transition: 0.4s; }} .metric-card:hover {{ transform: translateY(-8px); }}</style>", unsafe_allow_html=True)
+st.markdown(f"""
+<style>
+    .stApp {{ background: {st.session_state.bg}; color: white; }}
+    .metric-card {{ 
+        background: rgba(255,255,255,0.1); 
+        backdrop-filter: blur(10px); 
+        padding: 20px; 
+        border-radius: 20px; 
+        border: 1px solid rgba(255,255,255,0.2); 
+        text-align: center; 
+        transition: 0.4s; 
+    }}
+    .metric-card:hover {{ transform: translateY(-8px); }}
+</style>
+""", unsafe_allow_html=True)
 
 df_expenses = get_expense_data()
 df_goals = get_goal_data()
 
-# --- 4. SIDEBAR ---
+# --- 5. SIDEBAR (GOALS & LOGS) ---
 with st.sidebar:
     st.header("🎯 Permanent Goals")
     with st.expander("➕ Add New Goal"):
@@ -74,7 +88,7 @@ with st.sidebar:
             total_goal_savings += monthly
             ca, cb = st.columns([4, 1])
             ca.write(f"✅ **{row['name']}** (₹{monthly:,.0f})")
-            if cb.button("🗑️", key=f"g_{idx}"):
+            if cb.button("🗑️", key=f"g_{idx}"): # RESTORED GOAL DELETE
                 goal_sheet.delete_rows(idx + 2)
                 st.cache_data.clear()
                 st.rerun()
@@ -98,12 +112,12 @@ with st.sidebar:
         for i, r in df_expenses.tail(3).iloc[::-1].iterrows():
             ca, cb = st.columns([4, 1])
             ca.write(f"🛒 {r['item']} (₹{r['amount']})")
-            if cb.button("🗑️", key=f"l_{i}"):
+            if cb.button("🗑️", key=f"l_{i}"): # RESTORED LOG DELETE
                 expense_sheet.delete_rows(i + 2)
                 st.cache_data.clear()
                 st.rerun()
 
-# --- 5. DASHBOARD CALCULATIONS ---
+# --- 6. DASHBOARD (RESTORED 4 SQUARES) ---
 st.title("💰 My Money Tracker")
 total_spent = pd.to_numeric(df_expenses['amount'], errors='coerce').sum() if not df_expenses.empty else 0
 monthly_limit = 25000.0
@@ -115,16 +129,14 @@ with c2: st.markdown(f"<div class='metric-card'><h3>Goal Savings</h3><h2>₹{tot
 with c3: st.markdown(f"<div class='metric-card'><h3>Safe to Spend</h3><h2>₹{safe_to_spend:,.0f}</h2></div>", unsafe_allow_html=True)
 with c4: st.markdown(f"<div class='metric-card'><h3>Balance</h3><h2>₹{(monthly_limit - total_spent):,.0f}</h2></div>", unsafe_allow_html=True)
 
-# --- 6. PROGRESS BAR ---
+# --- 7. PROGRESS BAR & CHARTS ---
 st.write("##")
 usage_pct = min(total_spent / monthly_limit, 1.0) if monthly_limit > 0 else 0
 st.progress(usage_pct)
 st.write(f"Budget used: **{usage_pct*100:.1f}%**")
 
-# --- 7. PIE CHART & TABLE ---
 st.write("---")
 col_table, col_pie = st.columns([1.5, 1])
-
 with col_table:
     st.subheader("🕵️ Spending History")
     st.dataframe(df_expenses.iloc[::-1], use_container_width=True)
