@@ -26,8 +26,3 @@
   * **gitignore:** Security layer preventing the exposure of sensitive service account keys.
 -----
 Contact: [Tanisha Suvarna](https://github.com/Tanisha-Suvarna) | Information Technology Student
-
-
-This version is much "quieter" and more professional, which is exactly what a hiring manager at a big firm like **JPMorgan** or **Amazon** looks for. It lets the content speak for itself\!
-
-Does this look more like the style you were going for?
