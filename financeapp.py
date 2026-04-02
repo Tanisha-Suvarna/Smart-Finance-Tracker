@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(page_title="MMT Pro", page_icon="💰", layout="wide")
 import pandas as pd
 import plotly.express as px
 import gspread
