@@ -3,3 +3,4 @@ pandas
 plotly
 gspread
 oauth2client
+openai
